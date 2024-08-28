@@ -1,3 +1,5 @@
+use std::{thread, time::Duration};
+
 use clap::Parser;
 use serialport::{available_ports, SerialPortType};
 
@@ -34,7 +36,12 @@ fn main() -> anyhow::Result<()> {
 
     let mut port = serialport::new(port_name, 115200).open()?;
 
-    port.write_all(" reset ".as_bytes())?;
+    if args.reset {
+        println!("Resetting device");
+        port.write_all(" reset ".as_bytes())?;
+        thread::sleep(Duration::from_secs(1));
+        return Ok(());
+    }
 
     Ok(())
 }
