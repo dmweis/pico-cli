@@ -1,0 +1,15 @@
+[package]
+name = "pico-cli"
+version = "0.1.0"
+edition = "2021"
+authors = ["David Michael Weis <dweis7@gmail.com>"]
+description = "cli for interacting with my pico-playground project"
+license = "MIT OR APACHE"
+publish = false
+readme = "README.md"
+repository = "https://github.com/dmweis/pico-cli"
+
+[dependencies]
+serialport = { version = "4.5.0", features = ["usbportinfo-interface"] }
+clap = { version = "4.5.16", features = ["derive"] }
+anyhow = { version = "*" }
