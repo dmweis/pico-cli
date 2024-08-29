@@ -13,3 +13,7 @@ repository = "https://github.com/dmweis/pico-cli"
 serialport = { version = "4.5.0", features = ["usbportinfo-interface"] }
 clap = { version = "4.5.16", features = ["derive"] }
 anyhow = { version = "*" }
+
+
+serde = { version = "1.0.209", features = ["derive"] }
+postcard = { version = "*", features = ["alloc"] }

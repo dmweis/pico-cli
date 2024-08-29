@@ -1,6 +1,8 @@
-use std::{thread, time::Duration};
+use std::{io, thread, time::Duration};
 
 use clap::Parser;
+use postcard::{to_allocvec_cobs, to_vec, to_vec_cobs};
+use serde::{Deserialize, Serialize};
 use serialport::{available_ports, SerialPortType};
 
 /// Simple program to greet a person
@@ -20,6 +22,12 @@ struct Args {
     reset: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+struct MotorCommand {
+    a: i8,
+    b: i8,
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -36,11 +44,34 @@ fn main() -> anyhow::Result<()> {
 
     let mut port = serialport::new(port_name, 115200).open()?;
 
+    thread::spawn({
+        let mut port = port.try_clone().unwrap();
+        move || loop {
+            let mut text = String::new();
+            match port.read_to_string(&mut text) {
+                Ok(_) => {}
+                Err(ref e) if e.kind() == io::ErrorKind::TimedOut => (),
+                Err(e) => eprintln!("{:?}", e),
+            }
+            if !text.is_empty() {
+                println!("{}", text);
+            }
+        }
+    });
+
     if args.reset {
         println!("Resetting device");
         port.write_all(" reset ".as_bytes())?;
         thread::sleep(Duration::from_secs(1));
         return Ok(());
+    }
+
+    for i in 0..10 {
+        let command = MotorCommand { a: i, b: 10 - i };
+        let bytes = to_allocvec_cobs(&command)?;
+        println!("Sending payload");
+        port.write_all(&bytes)?;
+        thread::sleep(Duration::from_millis(250));
     }
 
     Ok(())
