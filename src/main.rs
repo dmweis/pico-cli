@@ -1,9 +1,12 @@
-use std::{io, thread, time::Duration};
+use std::{
+    io, thread,
+    time::{Duration, Instant},
+};
 
 use clap::Parser;
-use postcard::{to_allocvec_cobs, to_vec, to_vec_cobs};
+use postcard::{to_allocvec, to_allocvec_cobs};
 use serde::{Deserialize, Serialize};
-use serialport::{available_ports, SerialPortType};
+use serialport::{available_ports, SerialPort, SerialPortType};
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -22,10 +25,25 @@ struct Args {
     reset: bool,
 }
 
-#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq, Default)]
 struct MotorCommand {
     a: i8,
     b: i8,
+    c: i8,
+    d: i8,
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+struct LedCommand {
+    status: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[allow(clippy::enum_variant_names)]
+enum Command {
+    ResetToUsbBoot,
+    MotorCommand(MotorCommand),
+    LedCommand(LedCommand),
 }
 
 fn main() -> anyhow::Result<()> {
@@ -51,7 +69,10 @@ fn main() -> anyhow::Result<()> {
             match port.read_to_string(&mut text) {
                 Ok(_) => {}
                 Err(ref e) if e.kind() == io::ErrorKind::TimedOut => (),
-                Err(e) => eprintln!("{:?}", e),
+                Err(e) => {
+                    eprintln!("{:?}", e);
+                    return;
+                }
             }
             if !text.is_empty() {
                 println!("{}", text);
@@ -61,19 +82,78 @@ fn main() -> anyhow::Result<()> {
 
     if args.reset {
         println!("Resetting device");
-        port.write_all(" reset ".as_bytes())?;
+        let command = Command::ResetToUsbBoot;
+        let bytes = to_allocvec_cobs(&command)?;
+        println!("Sending payload {:?}", &to_allocvec(&command)?);
+        port.write_all(&bytes)?;
+
         thread::sleep(Duration::from_secs(1));
         return Ok(());
     }
 
-    for i in 0..10 {
-        let command = MotorCommand { a: i, b: 10 - i };
-        let bytes = to_allocvec_cobs(&command)?;
-        println!("Sending payload");
-        port.write_all(&bytes)?;
-        thread::sleep(Duration::from_millis(250));
-    }
+    // led on
+    port.write_all(&to_allocvec_cobs(&Command::LedCommand(LedCommand {
+        status: true,
+    }))?)?;
 
+    println!("Starting loop");
+    wind_up_motors(&mut port, 1)?;
+    wind_up_motors(&mut port, -1)?;
+
+    let command = Command::MotorCommand(MotorCommand::default());
+    port.write_all(&to_allocvec_cobs(&command)?)?;
+
+    // led off
+    port.write_all(&to_allocvec_cobs(&Command::LedCommand(LedCommand {
+        status: false,
+    }))?)?;
+
+    Ok(())
+}
+
+#[allow(unused)]
+fn run_motors(port: &mut Box<dyn SerialPort>, drive: i8) -> anyhow::Result<()> {
+    let now = Instant::now();
+    loop {
+        let command = Command::MotorCommand(MotorCommand {
+            a: drive,
+            b: drive,
+            c: drive,
+            d: drive,
+        });
+        port.write_all(&to_allocvec_cobs(&command)?)?;
+        println!("Sending command {:?}", to_allocvec(&command)?);
+        thread::sleep(Duration::from_millis(50));
+        if now.elapsed() > Duration::from_secs(5) {
+            break;
+        }
+    }
+    Ok(())
+}
+
+fn wind_up_motors(port: &mut Box<dyn SerialPort>, drive: i8) -> anyhow::Result<()> {
+    for i in 0..=100 {
+        let command = Command::MotorCommand(MotorCommand {
+            a: i * drive,
+            b: i * drive,
+            c: i * drive,
+            d: i * drive,
+        });
+        port.write_all(&to_allocvec_cobs(&command)?)?;
+        println!("Sending command {:?}", to_allocvec(&command)?);
+        thread::sleep(Duration::from_millis(50));
+    }
+    for i in (0..=100).rev() {
+        let command = Command::MotorCommand(MotorCommand {
+            a: i * drive,
+            b: i * drive,
+            c: i * drive,
+            d: i * drive,
+        });
+        port.write_all(&to_allocvec_cobs(&command)?)?;
+        println!("Sending command {:?}", to_allocvec(&command)?);
+        thread::sleep(Duration::from_millis(50));
+    }
     Ok(())
 }
 
