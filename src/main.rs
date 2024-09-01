@@ -60,7 +60,9 @@ fn main() -> anyhow::Result<()> {
         find_port()?
     };
 
-    let mut port = serialport::new(port_name, 115200).open()?;
+    let mut port = serialport::new(port_name, 115200)
+        .timeout(Duration::from_secs(1))
+        .open()?;
 
     thread::spawn({
         let mut port = port.try_clone().unwrap();
@@ -97,8 +99,10 @@ fn main() -> anyhow::Result<()> {
     }))?)?;
 
     println!("Starting loop");
-    wind_up_motors(&mut port, 1)?;
-    wind_up_motors(&mut port, -1)?;
+    for _ in 0..2 {
+        wind_up_motors(&mut port, 1)?;
+        wind_up_motors(&mut port, -1)?;
+    }
 
     let command = Command::MotorCommand(MotorCommand::default());
     port.write_all(&to_allocvec_cobs(&command)?)?;
